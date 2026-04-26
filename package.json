@@ -2,10 +2,10 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "service.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node service.js",
+    "dev": "node service.js"
   },
   "keywords": [],
   "author": "",
