@@ -1,6 +1,6 @@
 const express = require('express')
-const sqlite3 = require('sqlite3').verbose()
 const cors = require('cors')
+const { Pool } = require('pg')
 
 const app = express()
 
@@ -10,21 +10,35 @@ app.use(cors({
 
 app.use(express.json())
 
-// 📦 DB
-const db = new sqlite3.Database('./votes.db')
+// 🔥 conexión a PostgreSQL (Render)
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // necesario en Render
+  },
+})
 
-// Crear tabla si no existe
-db.run(`
-  CREATE TABLE IF NOT EXISTS votes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sessionId TEXT,
-    candidateId TEXT,
-    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`)
+// 🔥 crear tabla si no existe
+async function initDB() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS votes (
+        id SERIAL PRIMARY KEY,
+        session_id TEXT,
+        candidate_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+    console.log('DB ready')
+  } catch (err) {
+    console.error('DB init error:', err)
+  }
+}
+
+initDB()
 
 // POST votos
-app.post('/api/votes', (req, res) => {
+app.post('/api/votes', async (req, res) => {
   const { candidateIds } = req.body
 
   if (!candidateIds || candidateIds.length !== 4) {
@@ -33,35 +47,36 @@ app.post('/api/votes', (req, res) => {
 
   const sessionId = Date.now().toString()
 
-  const stmt = db.prepare(`
-    INSERT INTO votes (sessionId, candidateId)
-    VALUES (?, ?)
-  `)
+  try {
+    for (const id of candidateIds) {
+      await pool.query(
+        `INSERT INTO votes (session_id, candidate_id) VALUES ($1, $2)`,
+        [sessionId, id]
+      )
+    }
 
-  candidateIds.forEach(id => {
-    stmt.run(sessionId, id, (err) => {
-      if (err) {
-        console.error('Error inserting vote:', err)
-      }
-    })
-  })
-
-  stmt.finalize()
-
-  res.json({ success: true })
+    res.json({ success: true })
+  } catch (err) {
+    console.error('Error inserting vote:', err)
+    res.status(500).json({ error: 'DB error' })
+  }
 })
 
 // GET ranking
-app.get('/api/votes/popularity', (req, res) => {
-  db.all(`
-    SELECT candidateId, COUNT(*) as totalVotes
-    FROM votes
-    GROUP BY candidateId
-    ORDER BY totalVotes DESC
-  `, (err, rows) => {
-    if (err) return res.status(500).json(err)
-    res.json(rows)
-  })
+app.get('/api/votes/popularity', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT candidate_id, COUNT(*) as "totalVotes"
+      FROM votes
+      GROUP BY candidate_id
+      ORDER BY "totalVotes" DESC
+    `)
+
+    res.json(result.rows)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'DB error' })
+  }
 })
 
 // 🔥 IMPORTANTE PARA RENDER
