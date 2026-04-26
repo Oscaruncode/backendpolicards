@@ -3,7 +3,11 @@ const sqlite3 = require('sqlite3').verbose()
 const cors = require('cors')
 
 const app = express()
-app.use(cors())
+
+app.use(cors({
+  origin: '*'
+}))
+
 app.use(express.json())
 
 // 📦 DB
@@ -19,6 +23,7 @@ db.run(`
   )
 `)
 
+// POST votos
 app.post('/api/votes', (req, res) => {
   const { candidateIds } = req.body
 
@@ -34,7 +39,11 @@ app.post('/api/votes', (req, res) => {
   `)
 
   candidateIds.forEach(id => {
-    stmt.run(sessionId, id)
+    stmt.run(sessionId, id, (err) => {
+      if (err) {
+        console.error('Error inserting vote:', err)
+      }
+    })
   })
 
   stmt.finalize()
@@ -42,6 +51,7 @@ app.post('/api/votes', (req, res) => {
   res.json({ success: true })
 })
 
+// GET ranking
 app.get('/api/votes/popularity', (req, res) => {
   db.all(`
     SELECT candidateId, COUNT(*) as totalVotes
@@ -54,7 +64,9 @@ app.get('/api/votes/popularity', (req, res) => {
   })
 })
 
+// 🔥 IMPORTANTE PARA RENDER
+const PORT = process.env.PORT || 3001
 
-app.listen(3001, () => {
-  console.log('Backend running on http://localhost:3001')
+app.listen(PORT, () => {
+  console.log(`Backend running on port ${PORT}`)
 })
